@@ -205,7 +205,7 @@ class AssignView(APIView):
         if e is None:
             e = wo.scheduled_end
         if s and e and e <= s:
-            return Response({"error": {"code": "validation_error", "message": "scheduled_end must be after scheduled_start"}}, status=400)
+            return Response({"error": {"code": "validation_error", "message": "Scheduled end time must be after scheduled start time."}}, status=400)
         # validate technician
         from apps.accounts.models import User
         try:

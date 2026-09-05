@@ -1,5 +1,23 @@
 from rest_framework.views import exception_handler
 from rest_framework.response import Response
+import re
+
+def humanize_message(msg: str) -> str:
+    if not msg:
+        return "Validation failed."
+    m = msg.strip()
+    if re.search(r"scheduled_end\s+must\s+be\s+after\s+scheduled_start", m, re.I):
+        return "Scheduled end time must be after scheduled start time."
+    if "Must be after scheduled_start" in m:
+        return "Scheduled end time must be after scheduled start time."
+    m = m.replace("scheduled_end", "scheduled end time")
+    m = m.replace("scheduled_start", "scheduled start time")
+    m = m.replace("technician_id", "technician")
+    m = m.replace("site_name", "site name")
+    m = m.strip()
+    if m:
+        m = m[0].upper() + m[1:]
+    return m
 
 def custom_exception_handler(exc, context):
     response = exception_handler(exc, context)
@@ -28,6 +46,10 @@ def custom_exception_handler(exc, context):
             message = str(detail[0])
         elif isinstance(detail, str) and detail.strip():
             message = detail
+
+        # Humanize validation message
+        if response.status_code == 400:
+            message = humanize_message(message)
 
         # Map status to code
         code_map = {400: "validation_error", 401: "unauthorized", 403: "forbidden", 404: "not_found", 409: "conflict", 429: "rate_limited"}

@@ -24,6 +24,33 @@ export interface ApiErrorPayload {
   };
 }
 
+export function humanizeErrorMessage(raw: string): string {
+  if (!raw) return "";
+  let msg = raw.trim();
+
+  // Common technical patterns
+  if (/scheduled_end\s+must\s+be\s+after\s+scheduled_start/i.test(msg)) {
+    return "Scheduled end time must be after scheduled start time.";
+  }
+  if (/Must be after scheduled_start/i.test(msg)) {
+    return "Scheduled end time must be after scheduled start time.";
+  }
+
+  // Replace snake_case identifiers
+  msg = msg.replace(/\bscheduled_end\b/gi, "scheduled end time");
+  msg = msg.replace(/\bscheduled_start\b/gi, "scheduled start time");
+  msg = msg.replace(/\btechnician_id\b/gi, "technician");
+  msg = msg.replace(/\bsite_name\b/gi, "site name");
+  msg = msg.replace(/\bwork_order_id\b/gi, "work order");
+  msg = msg.replace(/\b([a-z]+)_([a-z]+)\b/g, "$1 $2");
+
+  msg = msg.trim();
+  if (msg.length > 0) {
+    msg = msg.charAt(0).toUpperCase() + msg.slice(1);
+  }
+  return msg;
+}
+
 export function extractErrorMessage(
   payload?: ApiErrorPayload | null,
   fallbackMsg: string = "Request failed"
@@ -33,32 +60,32 @@ export function extractErrorMessage(
 
   if (details) {
     if (typeof details === "string" && details.trim()) {
-      return details;
+      return humanizeErrorMessage(details);
     }
     if (Array.isArray(details) && details.length > 0) {
-      return details.map(String).join(", ");
+      return details.map((d) => humanizeErrorMessage(String(d))).join(", ");
     }
     if (typeof details === "object" && details !== null) {
       const msgs: string[] = [];
       const d = details as Record<string, unknown>;
 
       if (Array.isArray(d.non_field_errors) && d.non_field_errors.length > 0) {
-        msgs.push(...d.non_field_errors.map(String));
+        msgs.push(...d.non_field_errors.map((x) => humanizeErrorMessage(String(x))));
       } else if (typeof d.non_field_errors === "string" && d.non_field_errors.trim()) {
-        msgs.push(d.non_field_errors);
+        msgs.push(humanizeErrorMessage(d.non_field_errors));
       }
 
       if (typeof d.detail === "string" && d.detail.trim()) {
-        msgs.push(d.detail);
+        msgs.push(humanizeErrorMessage(d.detail));
       }
 
       for (const [key, val] of Object.entries(d)) {
         if (key === "non_field_errors" || key === "detail") continue;
         const fieldName = key.replace(/_/g, " ");
         if (Array.isArray(val) && val.length > 0) {
-          msgs.push(`${fieldName}: ${val.map(String).join(", ")}`);
+          msgs.push(`${fieldName}: ${val.map((x) => humanizeErrorMessage(String(x))).join(", ")}`);
         } else if (typeof val === "string" && val.trim()) {
-          msgs.push(`${fieldName}: ${val}`);
+          msgs.push(`${fieldName}: ${humanizeErrorMessage(val)}`);
         } else if (typeof val === "object" && val !== null) {
           msgs.push(`${fieldName}: ${JSON.stringify(val)}`);
         }
@@ -71,10 +98,10 @@ export function extractErrorMessage(
   }
 
   if (message && message.trim() && message !== "Validation failed") {
-    return message;
+    return humanizeErrorMessage(message);
   }
   if (message && message.trim()) {
-    return message;
+    return humanizeErrorMessage(message);
   }
 
   return fallbackMsg;
@@ -93,10 +120,10 @@ export function formatApiError(err: unknown): string {
     return extractErrorMessage(err as ApiErrorPayload, "Request failed");
   }
   if (err instanceof Error) {
-    return err.message;
+    return humanizeErrorMessage(err.message);
   }
   if (typeof err === "string") {
-    return err;
+    return humanizeErrorMessage(err);
   }
   return "An unexpected error occurred.";
 }

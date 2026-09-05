@@ -91,7 +91,7 @@ describe("Frontend Workflows and Security Boundaries", () => {
       });
 
       const formatted = formatApiError(validationErr);
-      expect(formatted).toBe("scheduled_end must be after scheduled_start");
+      expect(formatted).toBe("Scheduled end time must be after scheduled start time.");
     });
   });
 
@@ -124,7 +124,7 @@ describe("Frontend Workflows and Security Boundaries", () => {
 
       await waitFor(() => {
         expect(screen.getByText("Validation Error")).toBeInTheDocument();
-        expect(screen.getByText("scheduled_end must be after scheduled_start")).toBeInTheDocument();
+        expect(screen.getByText("Scheduled end time must be after scheduled start time.")).toBeInTheDocument();
       });
     });
   });

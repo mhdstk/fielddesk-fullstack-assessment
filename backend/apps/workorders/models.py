@@ -48,7 +48,7 @@ class WorkOrder(models.Model):
     def clean(self):
         if self.scheduled_start and self.scheduled_end:
             if self.scheduled_end <= self.scheduled_start:
-                raise ValidationError("scheduled_end must be after scheduled_start")
+                raise ValidationError("Scheduled end time must be after scheduled start time.")
         if self.technician and self.technician.organisation_id != self.organisation_id:
             raise ValidationError("Technician must belong to same organisation")
         if self.technician and self.technician.role != "technician":

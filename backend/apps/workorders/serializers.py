@@ -26,14 +26,14 @@ class WorkOrderSerializer(serializers.ModelSerializer):
         start = attrs.get("scheduled_start") or (self.instance.scheduled_start if self.instance else None)
         end = attrs.get("scheduled_end") or (self.instance.scheduled_end if self.instance else None)
         if start and end and end <= start:
-            raise serializers.ValidationError({"scheduled_end": "Must be after scheduled_start"})
+            raise serializers.ValidationError({"scheduled_end": "Scheduled end time must be after scheduled start time."})
         # if one provided without other, ensure consistency with existing instance
         if "scheduled_start" in attrs and self.instance and not attrs.get("scheduled_end") and self.instance.scheduled_end:
             if attrs["scheduled_start"] and self.instance.scheduled_end <= attrs["scheduled_start"]:
-                raise serializers.ValidationError({"scheduled_end": "Must be after scheduled_start"})
+                raise serializers.ValidationError({"scheduled_end": "Scheduled end time must be after scheduled start time."})
         if "scheduled_end" in attrs and self.instance and not attrs.get("scheduled_start") and self.instance.scheduled_start:
             if attrs["scheduled_end"] and attrs["scheduled_end"] <= self.instance.scheduled_start:
-                raise serializers.ValidationError({"scheduled_end": "Must be after scheduled_start"})
+                raise serializers.ValidationError({"scheduled_end": "Scheduled end time must be after scheduled start time."})
         # technician must be in same org - checked in view with request user org
         tech_id = attrs.get("technician_id")
         if tech_id is not None and tech_id != "":
@@ -41,9 +41,9 @@ class WorkOrderSerializer(serializers.ModelSerializer):
             try:
                 tech = User.objects.get(id=tech_id)
             except User.DoesNotExist:
-                raise serializers.ValidationError({"technician_id": "Technician not found"})
+                raise serializers.ValidationError({"technician_id": "Technician not found in organisation."})
             if tech.role != "technician":
-                raise serializers.ValidationError({"technician_id": "User is not a technician"})
+                raise serializers.ValidationError({"technician_id": "Assigned user is not a technician."})
             # org check deferred to view where request is available
         return attrs
 
@@ -59,5 +59,5 @@ class AssignSerializer(serializers.Serializer):
         s = attrs.get("scheduled_start")
         e = attrs.get("scheduled_end")
         if s and e and e <= s:
-            raise serializers.ValidationError("scheduled_end must be after scheduled_start")
+            raise serializers.ValidationError("Scheduled end time must be after scheduled start time.")
         return attrs
