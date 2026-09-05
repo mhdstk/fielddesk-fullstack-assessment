@@ -5,14 +5,32 @@
 
 # Dependencies
 node_modules/
+.venv/
+venv/
+env/
 
-# Build and test output
+# Python cache & build output
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Next.js and frontend build
 dist/
 build/
 coverage/
 .next/
+out/
 
-# Runtime data
+# Database & Runtime data
+*.sqlite3
+db.sqlite3
+staticfiles/
+media/attachments/*
+!media/attachments/.gitkeep
 uploads/
 *.log
 
