@@ -171,7 +171,7 @@ NEXT_PUBLIC_API_URL=http://localhost:8000 npm run dev
 | Check | Command | Result |
 | :--- | :--- | :--- |
 | **Backend Tests** | `cd backend && poetry run pytest -v` | **15 passed** (100% pass) |
-| **Frontend Tests** | `cd frontend && npm test` | **7 passed** (100% pass) |
+| **Frontend Tests** | `cd frontend && npm test` | **9 passed** (100% pass) |
 | **Frontend Lint** | `cd frontend && npm run lint` | **0 errors, 0 warnings** |
 | **Frontend Build** | `cd frontend && npm run build` | **Compiled successfully** (Next.js Turbopack) |
 
@@ -195,16 +195,17 @@ poetry run pytest -v
 - Rate limiting on auth and event endpoints.
 - Request correlation ID (`X-Request-ID`) propagation.
 
-### 2. Frontend Vitest Suite (7 Test Cases)
+### 2. Frontend Vitest Suite (9 Test Cases)
 ```bash
 cd frontend
 npm test
 ```
 **Coverage:**
-- Full login workflow and role badge rendering.
-- Work orders dashboard rendering and search filtering.
-- Concurrency conflict handling (409 message feedback).
-- Idempotent progress event submission.
+- Full login workflow and sample account credential auto-fill.
+- Navigation and organisation scope badge in Topbar.
+- Concurrency conflict handling and detailed API error extraction.
+- Toaster notification system and validation error messages (e.g. `scheduled_end must be after scheduled_start`).
+- Progress event idempotency and auth token local storage handling.
 - Real-time WebSocket connectivity status indicator.
 
 ---

@@ -6,7 +6,7 @@ Complete this document as part of the submission.
 
 - Name: Shaheen TK
 - GitHub username: mhdstk
-- Final commit SHA: 3e2ac02
+- Final commit SHA: 4827a26
 - Screen-recording link: [To be provided in PR description]
 
 ## Local setup
@@ -69,7 +69,7 @@ The database is seeded with two isolated organisations (`Acme Field Co` and `Glo
 | Check | Command | Result |
 | :--- | :--- | :--- |
 | Backend tests | `cd backend && poetry run pytest -v` | **15 passed** (100% pass) |
-| Frontend tests | `cd frontend && npm test` | **7 passed** (100% pass) |
+| Frontend tests | `cd frontend && npm test` | **9 passed** (100% pass) |
 | Integration tests | `cd backend && poetry run pytest -k "test_realtime_websocket_org_isolation or test_concurrent_scheduling_conflict or test_worker_retry_and_duplicate"` | **Passed** |
 | Lint | `cd frontend && npm run lint` | **0 errors, 0 warnings** |
 | Build | `cd frontend && npm run build` | **Compiled successfully** (Next.js Turbopack) |
