@@ -5,13 +5,13 @@ import { useToast, ToastItem } from "@/lib/toast";
 export function Toaster() {
   const { toasts, dismiss } = useToast();
 
-  if (toasts.length === 0) return null;
+  if (!toasts || toasts.length === 0) return null;
 
   return (
     <div
       aria-live="polite"
       aria-atomic="true"
-      className="fixed top-5 right-5 z-50 flex flex-col gap-2.5 w-full max-w-sm sm:max-w-md pointer-events-none px-4 sm:px-0 transition-all duration-200"
+      className="fixed top-5 right-5 z-[9999] flex flex-col gap-3 w-full max-w-sm sm:max-w-md pointer-events-none px-4 sm:px-0 transition-all duration-300"
     >
       {toasts.map((t) => (
         <ToastCard key={t.id} toast={t} onDismiss={() => dismiss(t.id)} />
@@ -34,33 +34,33 @@ function ToastCard({ toast, onDismiss }: { toast: ToastItem; onDismiss: () => vo
     : "border-blue-200";
 
   const bgColor = isError
-    ? "bg-red-50/90 text-red-950"
+    ? "bg-white text-zinc-900 border-red-300 shadow-xl"
     : isSuccess
-    ? "bg-emerald-50/90 text-emerald-950"
+    ? "bg-white text-zinc-900 border-emerald-300 shadow-xl"
     : isWarning
-    ? "bg-amber-50/90 text-amber-950"
-    : "bg-blue-50/90 text-blue-950";
+    ? "bg-white text-zinc-900 border-amber-300 shadow-xl"
+    : "bg-white text-zinc-900 border-blue-300 shadow-xl";
 
   const iconBg = isError
-    ? "bg-red-600 text-white"
+    ? "bg-red-500 text-white"
     : isSuccess
-    ? "bg-emerald-600 text-white"
+    ? "bg-emerald-500 text-white"
     : isWarning
     ? "bg-amber-500 text-white"
-    : "bg-blue-600 text-white";
+    : "bg-blue-500 text-white";
 
   return (
     <div
       role={isError ? "alert" : "status"}
-      className={`pointer-events-auto relative overflow-hidden rounded-xl border ${borderColor} ${bgColor} p-4 shadow-lg backdrop-blur-md transition-all duration-200 animate-in fade-in slide-in-from-top-2`}
+      className={`pointer-events-auto relative overflow-hidden rounded-2xl border ${borderColor} ${bgColor} p-4 shadow-2xl transition-all duration-200`}
     >
       <div className="flex items-start gap-3">
         <div
-          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${iconBg} mt-0.5`}
+          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${iconBg} mt-0.5 shadow-sm`}
         >
           {isError && (
             <svg
-              className="h-3.5 w-3.5"
+              className="h-4 w-4"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -71,7 +71,7 @@ function ToastCard({ toast, onDismiss }: { toast: ToastItem; onDismiss: () => vo
           )}
           {isSuccess && (
             <svg
-              className="h-3.5 w-3.5"
+              className="h-4 w-4"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -82,7 +82,7 @@ function ToastCard({ toast, onDismiss }: { toast: ToastItem; onDismiss: () => vo
           )}
           {isWarning && (
             <svg
-              className="h-3.5 w-3.5"
+              className="h-4 w-4"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -97,7 +97,7 @@ function ToastCard({ toast, onDismiss }: { toast: ToastItem; onDismiss: () => vo
           )}
           {!isError && !isSuccess && !isWarning && (
             <svg
-              className="h-3.5 w-3.5"
+              className="h-4 w-4"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -127,7 +127,7 @@ function ToastCard({ toast, onDismiss }: { toast: ToastItem; onDismiss: () => vo
           onClick={onDismiss}
           type="button"
           aria-label="Close notification"
-          className="shrink-0 -mr-1 -mt-1 p-1 rounded-lg text-zinc-400 hover:text-zinc-700 hover:bg-black/5 transition-colors"
+          className="shrink-0 -mr-1 -mt-1 p-1 rounded-lg text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 transition-colors"
         >
           <svg
             className="h-4 w-4"

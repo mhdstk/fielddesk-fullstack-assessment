@@ -1,6 +1,6 @@
 "use client";
 import React, { useState } from "react";
-import { apiJson, formatApiError } from "@/lib/api";
+import { apiJson } from "@/lib/api";
 import { Topbar } from "@/components/Topbar";
 import { useRouter } from "next/navigation";
 import { WorkOrder, WorkOrderPriority } from "@/lib/types";
@@ -16,12 +16,10 @@ export default function NewWorkOrder() {
     scheduled_start: "",
     scheduled_end: "",
   });
-  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
     setLoading(true);
     try {
       const payload: {
@@ -50,8 +48,6 @@ export default function NewWorkOrder() {
       toast.success("Work order created successfully");
       router.push(`/work-orders/${wo.id}`);
     } catch (e: unknown) {
-      const errMsg = formatApiError(e);
-      setError(errMsg);
       toast.error(e);
     } finally {
       setLoading(false);
@@ -66,11 +62,6 @@ export default function NewWorkOrder() {
           onSubmit={submit}
           className="bg-white rounded-xl border border-zinc-200 p-6 sm:p-8 space-y-5"
         >
-          {error && (
-            <div className="rounded-lg border border-red-200 bg-red-50 text-red-700 text-sm px-3 py-2">
-              {error}
-            </div>
-          )}
           <div>
             <label className="text-sm font-medium">Title *</label>
             <input

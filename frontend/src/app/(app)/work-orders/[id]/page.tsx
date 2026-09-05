@@ -283,9 +283,6 @@ export default function WorkOrderDetail() {
     scheduled_end: "",
   });
   const [status, setStatus] = useState<WorkOrderStatus>("open");
-  const [assignError, setAssignError] = useState("");
-  const [eventError, setEventError] = useState("");
-  const [uploadError, setUploadError] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -322,7 +319,6 @@ export default function WorkOrderDetail() {
   }, [load, loadTechs]);
 
   const doAssign = async () => {
-    setAssignError("");
     try {
       const payload: {
         technician_id: string;
@@ -342,14 +338,11 @@ export default function WorkOrderDetail() {
       toast.success("Technician assigned and scheduled successfully");
       await load();
     } catch (e: unknown) {
-      const msg = formatApiError(e);
-      setAssignError(msg);
       toast.error(e);
     }
   };
 
   const doStatus = async () => {
-    setEventError("");
     try {
       const eventId = `evt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
       await apiJson("/api/events/", {
@@ -365,8 +358,6 @@ export default function WorkOrderDetail() {
       toast.success(`Status updated to ${formatStatus(status)}`);
       await load();
     } catch (e: unknown) {
-      const msg = formatApiError(e);
-      setEventError(msg);
       toast.error(e);
     }
   };
@@ -374,7 +365,6 @@ export default function WorkOrderDetail() {
   const doUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setUploadError("");
     const fd = new FormData();
     fd.append("file", file);
     try {
@@ -385,15 +375,12 @@ export default function WorkOrderDetail() {
       if (!res.ok) {
         const j = (await res.json()) as { error?: { message?: string; details?: unknown } };
         const msg = formatApiError(j);
-        setUploadError(msg);
         toast.error(msg, { title: "Upload Failed" });
         return;
       }
       toast.success("Attachment uploaded successfully");
       await load();
     } catch (err: unknown) {
-      const msg = formatApiError(err);
-      setUploadError(msg);
       toast.error(err, { title: "Upload Failed" });
     }
   };
@@ -515,7 +502,6 @@ export default function WorkOrderDetail() {
               </label>
               <span className="text-xs text-zinc-500 font-light">Images or PDF, max 10MB</span>
             </div>
-            {uploadError && <div className="text-sm text-red-600 mb-3">{uploadError}</div>}
             <div className="space-y-2">
               {(wo.attachments || []).map((a) => (
                 <div
@@ -720,11 +706,6 @@ export default function WorkOrderDetail() {
                   className="w-full h-10 px-3 rounded-lg border border-zinc-200 text-sm focus:border-zinc-900"
                   placeholder="End"
                 />
-                {assignError && (
-                  <div className="text-sm text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded-lg">
-                    {assignError}
-                  </div>
-                )}
                 <button
                   type="button"
                   onClick={doAssign}
@@ -755,11 +736,6 @@ export default function WorkOrderDetail() {
                 <option value="completed">Completed</option>
                 <option value="cancelled">Cancelled</option>
               </select>
-              {eventError && (
-                <div className="text-sm text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded-lg">
-                  {eventError}
-                </div>
-              )}
               <button
                 type="button"
                 onClick={doStatus}
