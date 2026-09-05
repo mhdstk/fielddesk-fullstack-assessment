@@ -1,9 +1,10 @@
 "use client";
 import React, { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { apiFetch, apiJson, ApiError } from "@/lib/api";
+import { apiFetch, apiJson, formatApiError } from "@/lib/api";
 import { Topbar } from "@/components/Topbar";
 import { useAuth } from "@/lib/auth";
+import { toast } from "@/lib/toast";
 import {
   WorkOrder,
   AuditLog,
@@ -296,11 +297,7 @@ export default function WorkOrderDetail() {
       );
       setAudit(Array.isArray(a) ? a : a.results || []);
     } catch (e: unknown) {
-      if (e instanceof ApiError && e.data?.error?.message) {
-        setError(e.data.error.message);
-      } else {
-        setError(e instanceof Error ? e.message : "Failed to load work order");
-      }
+      setError(formatApiError(e));
     }
   }, [id]);
 
@@ -342,13 +339,12 @@ export default function WorkOrderDetail() {
         method: "POST",
         body: JSON.stringify(payload),
       });
+      toast.success("Technician assigned and scheduled successfully");
       await load();
     } catch (e: unknown) {
-      if (e instanceof ApiError && e.data?.error?.message) {
-        setAssignError(e.data.error.message);
-      } else {
-        setAssignError(e instanceof Error ? e.message : "Assignment failed");
-      }
+      const msg = formatApiError(e);
+      setAssignError(msg);
+      toast.error(e);
     }
   };
 
@@ -366,13 +362,12 @@ export default function WorkOrderDetail() {
           payload: { status },
         }),
       });
+      toast.success(`Status updated to ${formatStatus(status)}`);
       await load();
     } catch (e: unknown) {
-      if (e instanceof ApiError && e.data?.error?.message) {
-        setEventError(e.data.error.message);
-      } else {
-        setEventError(e instanceof Error ? e.message : "Status update failed");
-      }
+      const msg = formatApiError(e);
+      setEventError(msg);
+      toast.error(e);
     }
   };
 
@@ -382,15 +377,24 @@ export default function WorkOrderDetail() {
     setUploadError("");
     const fd = new FormData();
     fd.append("file", file);
-    const res = await apiFetch(`/api/work-orders/${id}/attachments/`, {
-      method: "POST",
-      body: fd,
-    });
-    if (!res.ok) {
-      const j = (await res.json()) as { error?: { message?: string } };
-      setUploadError(j?.error?.message || "Upload failed");
-    } else {
+    try {
+      const res = await apiFetch(`/api/work-orders/${id}/attachments/`, {
+        method: "POST",
+        body: fd,
+      });
+      if (!res.ok) {
+        const j = (await res.json()) as { error?: { message?: string; details?: unknown } };
+        const msg = formatApiError(j);
+        setUploadError(msg);
+        toast.error(msg, { title: "Upload Failed" });
+        return;
+      }
+      toast.success("Attachment uploaded successfully");
       await load();
+    } catch (err: unknown) {
+      const msg = formatApiError(err);
+      setUploadError(msg);
+      toast.error(err, { title: "Upload Failed" });
     }
   };
 

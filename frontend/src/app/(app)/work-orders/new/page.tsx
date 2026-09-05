@@ -1,9 +1,10 @@
 "use client";
 import React, { useState } from "react";
-import { apiJson, ApiError } from "@/lib/api";
+import { apiJson, formatApiError } from "@/lib/api";
 import { Topbar } from "@/components/Topbar";
 import { useRouter } from "next/navigation";
 import { WorkOrder, WorkOrderPriority } from "@/lib/types";
+import { toast } from "@/lib/toast";
 
 export default function NewWorkOrder() {
   const router = useRouter();
@@ -46,13 +47,12 @@ export default function NewWorkOrder() {
         method: "POST",
         body: JSON.stringify(payload),
       });
+      toast.success("Work order created successfully");
       router.push(`/work-orders/${wo.id}`);
     } catch (e: unknown) {
-      if (e instanceof ApiError && e.data?.error?.message) {
-        setError(e.data.error.message);
-      } else {
-        setError(e instanceof Error ? e.message : "Failed to create work order");
-      }
+      const errMsg = formatApiError(e);
+      setError(errMsg);
+      toast.error(e);
     } finally {
       setLoading(false);
     }

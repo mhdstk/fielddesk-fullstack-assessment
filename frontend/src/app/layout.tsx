@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Poppins, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth";
+import { ToastProvider } from "@/lib/toast";
+import { Toaster } from "@/components/Toaster";
 
 const poppins = Poppins({
   subsets: ["latin"],
@@ -20,7 +22,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${poppins.variable} ${mono.variable} h-full antialiased`}>
       <body className="min-h-full bg-[#fcfcfc]">
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          <ToastProvider>
+            {children}
+            <Toaster />
+          </ToastProvider>
+        </AuthProvider>
       </body>
     </html>
   );

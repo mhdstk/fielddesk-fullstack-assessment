@@ -1,9 +1,9 @@
-FROM node:20-alpine
+FROM node:22-alpine
 
 WORKDIR /app
 
 COPY package.json package-lock.json* /app/
-RUN npm ci || npm install
+RUN npm install --legacy-peer-deps
 
 COPY . /app
 

@@ -3,7 +3,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import LoginPage from "@/app/login/page";
 import { Topbar } from "@/components/Topbar";
-import { setTokens, clearTokens, getToken, apiJson } from "@/lib/api";
+import { setTokens, clearTokens, getToken, apiJson, formatApiError, ApiError } from "@/lib/api";
+import { ToastProvider, toast } from "@/lib/toast";
+import { Toaster } from "@/components/Toaster";
 import { User } from "@/lib/types";
 
 // Mock next/navigation
@@ -74,6 +76,56 @@ describe("Frontend Workflows and Security Boundaries", () => {
       await expect(apiJson("/api/work-orders/1/assign/")).rejects.toThrow(
         "Worker already assigned"
       );
+    });
+
+    it("extracts and formats nested validation error details accurately", () => {
+      const validationErr = new ApiError(400, "Validation failed", {
+        error: {
+          code: "validation_error",
+          message: "Validation failed",
+          details: {
+            non_field_errors: ["scheduled_end must be after scheduled_start"],
+          },
+          requestId: "test-req-id-123",
+        },
+      });
+
+      const formatted = formatApiError(validationErr);
+      expect(formatted).toBe("scheduled_end must be after scheduled_start");
+    });
+  });
+
+  describe("Toaster and Toast Notification System", () => {
+    it("renders toaster notifications with proper titles and formatted messages", async () => {
+      render(
+        <ToastProvider>
+          <Toaster />
+          <button
+            onClick={() =>
+              toast.error(
+                new ApiError(400, "Validation failed", {
+                  error: {
+                    code: "validation_error",
+                    message: "Validation failed",
+                    details: {
+                      non_field_errors: ["scheduled_end must be after scheduled_start"],
+                    },
+                  },
+                })
+              )
+            }
+          >
+            Trigger Error Toast
+          </button>
+        </ToastProvider>
+      );
+
+      fireEvent.click(screen.getByText("Trigger Error Toast"));
+
+      await waitFor(() => {
+        expect(screen.getByText("Validation Error")).toBeInTheDocument();
+        expect(screen.getByText("scheduled_end must be after scheduled_start")).toBeInTheDocument();
+      });
     });
   });
 

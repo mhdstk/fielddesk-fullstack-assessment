@@ -2,6 +2,8 @@
 import React, { useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { useRouter } from "next/navigation";
+import { formatApiError } from "@/lib/api";
+import { toast } from "@/lib/toast";
 
 const SAMPLE = [
   { label: "Acme — Owner", username: "acme_owner", org: "Acme" },
@@ -26,9 +28,12 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login(username, password);
+      toast.success("Signed in successfully");
       router.push("/dashboard");
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      const msg = formatApiError(err);
+      setError(msg);
+      toast.error(err, { title: "Login Failed" });
     } finally {
       setLoading(false);
     }

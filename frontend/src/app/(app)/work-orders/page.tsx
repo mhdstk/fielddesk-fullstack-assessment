@@ -1,11 +1,12 @@
 "use client";
 import { useEffect, useState, useCallback, Suspense } from "react";
-import { apiFetch, apiJson } from "@/lib/api";
+import { apiFetch, apiJson, formatApiError } from "@/lib/api";
 import { Topbar } from "@/components/Topbar";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
 import { useSearchParams } from "next/navigation";
 import { WorkOrder, PaginatedResponse, WorkOrderPriority, WorkOrderStatus } from "@/lib/types";
+import { toast } from "@/lib/toast";
 
 function WorkOrdersContent() {
   const { user } = useAuth();
@@ -36,7 +37,7 @@ function WorkOrdersContent() {
       );
       setData(res);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to load");
+      setError(formatApiError(e));
     } finally {
       setLoading(false);
     }
@@ -69,19 +70,27 @@ function WorkOrdersContent() {
   };
 
   const exportCsv = async () => {
-    const params = new URLSearchParams();
-    if (q) params.set("search", q);
-    if (statusF) params.set("status", statusF);
-    if (priorityF) params.set("priority", priorityF);
-    if (assignedMe && user) params.set("technician", user.id);
-    const res = await apiFetch(`/api/exports/work-orders.csv?${params.toString()}`);
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "work_orders.csv";
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      const params = new URLSearchParams();
+      if (q) params.set("search", q);
+      if (statusF) params.set("status", statusF);
+      if (priorityF) params.set("priority", priorityF);
+      if (assignedMe && user) params.set("technician", user.id);
+      const res = await apiFetch(`/api/exports/work-orders.csv?${params.toString()}`);
+      if (!res.ok) {
+        throw new Error("Failed to generate CSV export");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "work_orders.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("CSV export downloaded successfully");
+    } catch (e: unknown) {
+      toast.error(e, { title: "Export Failed" });
+    }
   };
 
   const title = assignedMe ? "My Work" : "Work Orders";

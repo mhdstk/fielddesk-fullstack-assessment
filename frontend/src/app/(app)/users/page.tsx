@@ -1,9 +1,10 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
-import { apiJson, ApiError } from "@/lib/api";
+import { apiJson, formatApiError } from "@/lib/api";
 import { Topbar } from "@/components/Topbar";
 import { useAuth } from "@/lib/auth";
 import { User, PaginatedResponse, UserRole } from "@/lib/types";
+import { toast } from "@/lib/toast";
 
 export default function UsersPage() {
   const { user } = useAuth();
@@ -19,7 +20,7 @@ export default function UsersPage() {
       const data = await apiJson<PaginatedResponse<User> | User[]>("/api/auth/users/");
       setUsers(Array.isArray(data) ? data : data.results || []);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to load users");
+      setError(formatApiError(e));
     } finally {
       setLoading(false);
     }
@@ -52,14 +53,13 @@ export default function UsersPage() {
         method: "PATCH",
         body: JSON.stringify({ role: newRole }),
       });
+      toast.success("User role updated successfully");
       setEditing(null);
       await load();
     } catch (e: unknown) {
-      if (e instanceof ApiError && e.data?.error?.message) {
-        setError(e.data.error.message);
-      } else {
-        setError(e instanceof Error ? e.message : "Failed to update role");
-      }
+      const msg = formatApiError(e);
+      setError(msg);
+      toast.error(e);
     }
   };
 
