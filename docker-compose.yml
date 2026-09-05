@@ -1,0 +1,87 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: fielddesk
+      POSTGRES_USER: fielddesk
+      POSTGRES_PASSWORD: fielddesk
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fielddesk"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: >
+      bash -c "python manage.py migrate --no-input &&
+               python manage.py seed || true &&
+               daphne -b 0.0.0.0 -p 8000 config.asgi:application"
+    environment:
+      SECRET_KEY: ${SECRET_KEY:-django-insecure-fielddesk-assessment-key-change-in-prod}
+      DEBUG: ${DEBUG:-True}
+      DATABASE_URL: postgres://fielddesk:fielddesk@db:5432/fielddesk
+      REDIS_URL: redis://redis:6379/0
+      ALLOWED_HOSTS: "*"
+      CORS_ALLOWED_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+      STORAGE_LIMIT_BYTES: ${STORAGE_LIMIT_BYTES:-104857600}
+      MOCK_PROVIDER_MODE: ${MOCK_PROVIDER_MODE:-success}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - media:/app/media
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A config worker -l info
+    environment:
+      SECRET_KEY: ${SECRET_KEY:-django-insecure-fielddesk-assessment-key-change-in-prod}
+      DEBUG: ${DEBUG:-True}
+      DATABASE_URL: postgres://fielddesk:fielddesk@db:5432/fielddesk
+      REDIS_URL: redis://redis:6379/0
+      ALLOWED_HOSTS: "*"
+      MOCK_PROVIDER_MODE: ${MOCK_PROVIDER_MODE:-success}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  media:
