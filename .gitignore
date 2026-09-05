@@ -31,6 +31,8 @@ db.sqlite3
 staticfiles/
 media/attachments/*
 !media/attachments/.gitkeep
+backend/media/attachments/*
+!backend/media/attachments/.gitkeep
 uploads/
 *.log
 
