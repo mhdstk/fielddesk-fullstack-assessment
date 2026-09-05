@@ -1,20 +1,44 @@
 from django.core.management.base import BaseCommand
 from django.contrib.auth import get_user_model
+from django.db.utils import OperationalError, ProgrammingError
 from apps.accounts.models import Organisation
 from apps.workorders.models import WorkOrder
 from django.utils import timezone
 from datetime import timedelta
-import uuid
 
 User = get_user_model()
 
 class Command(BaseCommand):
     help = "Seed two organisations with users and work orders"
 
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--clean",
+            action="store_true",
+            help="Wipe existing data and re-seed from scratch",
+        )
+        parser.add_argument(
+            "--force",
+            action="store_true",
+            help="Force re-seeding even if data exists",
+        )
+
     def handle(self, *args, **options):
-        self.stdout.write("Seeding...")
-        # Clean existing
-        Organisation.objects.all().delete()
+        clean = options.get("clean") or options.get("force")
+        try:
+            if Organisation.objects.exists() and not clean:
+                self.stdout.write(self.style.SUCCESS("Database already contains organisations. Skipping seed. (Use --clean to wipe and re-seed)."))
+                return
+        except (OperationalError, ProgrammingError):
+            pass
+
+        self.stdout.write("Seeding database...")
+        if clean:
+            try:
+                Organisation.objects.all().delete()
+            except Exception:
+                pass
+
         # Org 1: Apex Field Services (slug 'acme' kept for credential compatibility)
         org1 = Organisation.objects.create(name="Apex Field Services", slug="acme", storage_limit_bytes=104857600)
         org2 = Organisation.objects.create(name="NorthPeak Maintenance", slug="globex", storage_limit_bytes=104857600)
