@@ -6,7 +6,7 @@ Complete this document as part of the submission.
 
 - Name: Shaheen TK
 - GitHub username: mhdstk
-- Final commit SHA: [Will be generated upon commit]
+- Final commit SHA: 1dbeae5
 - Screen-recording link: [To be provided in PR description]
 
 ## Local setup
