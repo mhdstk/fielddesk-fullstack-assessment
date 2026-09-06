@@ -66,6 +66,16 @@ class ProgressEventView(APIView):
         if request.user.role == "technician" and wo.technician_id != request.user.id:
             return Response({"error": {"code": "forbidden", "message": "Not assigned to this work order"}}, status=403)
 
+        # Restrict status transitions that require an assigned technician
+        if type_ == "status_changed":
+            new_status = payload.get("status")
+            requires_tech = {"scheduled", "in_progress", "completed"}
+            if new_status in requires_tech and wo.technician_id is None:
+                return Response(
+                    {"error": {"code": "validation_error", "message": f"Cannot move to '{new_status}' without an assigned technician. Assign a technician first."}},
+                    status=400,
+                )
+
         # idempotency + atomic processing
         # Preserve original request as raw_request
         raw = {

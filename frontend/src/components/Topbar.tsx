@@ -1,5 +1,6 @@
 "use client";
 import { useAuth } from "@/lib/auth";
+import { toast } from "@/lib/toast";
 import { useEffect, useState, useRef } from "react";
 
 export function Topbar({ title, subtitle }: { title: string; subtitle?: string }) {
@@ -43,9 +44,22 @@ export function Topbar({ title, subtitle }: { title: string; subtitle?: string }
       };
       ws.onmessage = (ev) => {
         try {
-          const data = JSON.parse(ev.data) as { type?: string; data?: unknown };
+          const data = JSON.parse(ev.data) as { type?: string; data?: { action?: string; work_order_id?: string; ref?: string; technician_id?: string; type?: string; event_id?: string } };
           if (data.type === "work_order_update") {
-            window.dispatchEvent(new CustomEvent("work_order_update", { detail: data.data }));
+            const payload = data.data || {};
+            window.dispatchEvent(new CustomEvent("work_order_update", { detail: payload }));
+            // Toaster notifications for all real-time work order changes
+            const action = payload.action;
+            if (action === "assigned") {
+              toast.info(`Technician assigned to work order ${payload.ref || payload.work_order_id || ""}`.trim(), { title: "Assignment" });
+            } else if (action === "event") {
+              const label = payload.type === "status_changed" ? "Status updated" : payload.type || "Progress event";
+              toast.info(`${label} for ${payload.work_order_id?.slice(0, 8) || "work order"}`, { title: "Work order updated" });
+            } else if (action === "created") {
+              toast.info(`New work order ${payload.ref || ""} created`, { title: "Work order created" });
+            } else if (action === "updated") {
+              toast.info(`Work order ${payload.ref || payload.work_order_id?.slice(0, 8) || ""} updated`, { title: "Work order updated" });
+            }
           }
         } catch {
           // Ignore parse errors on malformed messages

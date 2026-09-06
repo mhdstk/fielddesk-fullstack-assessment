@@ -284,11 +284,28 @@ export default function WorkOrderDetail() {
   });
   const [status, setStatus] = useState<WorkOrderStatus>("open");
 
+  const toLocalInput = (iso?: string | null) => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
   const load = useCallback(async () => {
     try {
       const data = await apiJson<WorkOrder>(`/api/work-orders/${id}/`);
       setWo(data);
       setStatus(data.status);
+      // Sync assign form with current assignment so UI clearly shows Assigned vs Reassign
+      // Only auto-fill if user hasn't started editing; preserve manual edits otherwise
+      setAssign((prev) => {
+        if (prev.technician_id) return prev;
+        return {
+          technician_id: data.technician?.id || "",
+          scheduled_start: data.scheduled_start ? toLocalInput(data.scheduled_start) : "",
+          scheduled_end: data.scheduled_end ? toLocalInput(data.scheduled_end) : "",
+        };
+      });
       const a = await apiJson<PaginatedResponse<AuditLog> | AuditLog[]>(
         `/api/work-orders/${id}/audit/`
       );
@@ -318,7 +335,22 @@ export default function WorkOrderDetail() {
     return () => window.removeEventListener("work_order_update", h);
   }, [load, loadTechs]);
 
+  const isAssigned = Boolean(wo?.technician);
+  const assignedOnlyStatuses: WorkOrderStatus[] = ["scheduled", "in_progress", "completed"];
+  const isStatusRequiresAssignment = assignedOnlyStatuses.includes(status);
+  const canAssign = user?.role !== "technician";
+  const canStatus = user?.role === "technician" ? wo?.technician?.id === user.id : true;
+
   const doAssign = async () => {
+    if (!assign.technician_id) {
+      toast.warning("Please select a technician", { title: "Technician required" });
+      return;
+    }
+    // If already assigned to same technician with same schedule, warn
+    if (wo?.technician?.id === assign.technician_id && !assign.scheduled_start && !assign.scheduled_end) {
+      toast.warning(`Already assigned to ${wo.technician.username}. Change schedule to update or pick another technician.`, { title: "Already assigned" });
+      return;
+    }
     try {
       const payload: {
         technician_id: string;
@@ -331,18 +363,42 @@ export default function WorkOrderDetail() {
       if (assign.scheduled_end) {
         payload.scheduled_end = new Date(assign.scheduled_end).toISOString();
       }
+      const isReassign = Boolean(wo?.technician);
       await apiJson(`/api/work-orders/${id}/assign/`, {
         method: "POST",
         body: JSON.stringify(payload),
       });
-      toast.success("Technician assigned and scheduled successfully");
+      toast.success(
+        isReassign ? `Reassigned to technician successfully` : "Technician assigned and scheduled successfully",
+        { title: isReassign ? "Reassigned" : "Assigned" }
+      );
       await load();
     } catch (e: unknown) {
-      toast.error(e);
+      // Surface scheduling conflict with clear actionable message
+      const msg = formatApiError(e);
+      const isConflict = e instanceof Error && (e as unknown as { status?: number }).status === 409 || msg.toLowerCase().includes("already assigned") || msg.toLowerCase().includes("scheduling conflict") || msg.toLowerCase().includes("conflict");
+      if (isConflict) {
+        toast.error(e, { title: "Technician busy — scheduling conflict" });
+      } else {
+        toast.error(e);
+      }
     }
   };
 
   const doStatus = async () => {
+    // Gating: if not assigned, block statuses that require assignment
+    if (!wo) return;
+    if (!isAssigned && isStatusRequiresAssignment) {
+      toast.warning(`Cannot move to "${formatStatus(status)}" without an assigned technician. Assign a technician first.`, {
+        title: "Assignment required",
+      });
+      return;
+    }
+    // Block trivial no-op
+    if (wo.status === status) {
+      toast.warning(`Already in "${formatStatus(status)}"`, { title: "No change" });
+      return;
+    }
     try {
       const eventId = `evt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
       await apiJson("/api/events/", {
@@ -408,9 +464,6 @@ export default function WorkOrderDetail() {
         <div className="p-6 text-slate-500">Loading…</div>
       </>
     );
-
-  const canAssign = user?.role !== "technician";
-  const canStatus = user?.role === "technician" ? wo.technician?.id === user.id : true;
 
   return (
     <>
@@ -663,7 +716,32 @@ export default function WorkOrderDetail() {
         <div className="space-y-6">
           {canAssign && (
             <div className="bg-white rounded-xl border border-zinc-200 p-5">
-              <h3 className="font-semibold text-sm tracking-tight">Assign technician</h3>
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-sm tracking-tight">
+                  {isAssigned ? "Assigned technician" : "Assign technician"}
+                </h3>
+                {isAssigned && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Assigned
+                  </span>
+                )}
+              </div>
+              {isAssigned && wo?.technician && (
+                <div className="mt-3 p-3 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center gap-3">
+                  <span className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs font-medium shrink-0">
+                    {wo.technician.username.slice(0, 2).toUpperCase()}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-emerald-900 truncate">{wo.technician.username}</div>
+                    <div className="text-xs text-emerald-700 truncate font-light">{wo.technician.email}</div>
+                  </div>
+                </div>
+              )}
+              {!isAssigned && (
+                <p className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 font-light">
+                  Unassigned — status changes to Scheduled / In Progress / Completed will be blocked until a technician is assigned.
+                </p>
+              )}
               <div className="mt-4 space-y-3">
                 <select
                   value={assign.technician_id}
@@ -675,10 +753,10 @@ export default function WorkOrderDetail() {
                   }
                   className="w-full h-10 px-3 rounded-lg border border-zinc-200 bg-white text-sm focus:border-zinc-900"
                 >
-                  <option value="">Select technician</option>
+                  <option value="">{isAssigned ? "Reassign to…" : "Select technician"}</option>
                   {techs.map((t) => (
                     <option key={t.id} value={t.id}>
-                      {t.username} ({t.email})
+                      {t.username} ({t.email}) {wo?.technician?.id === t.id ? "• current" : ""}
                     </option>
                   ))}
                 </select>
@@ -712,10 +790,10 @@ export default function WorkOrderDetail() {
                   disabled={!assign.technician_id}
                   className="w-full h-10 bg-zinc-900 hover:bg-black disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors"
                 >
-                  Assign
+                  {isAssigned ? "Reassign" : "Assign"}
                 </button>
                 <p className="text-xs text-zinc-500 font-light text-center">
-                  1 hour gap required on same day — overlapping assignments will return conflict.
+                  1 hour gap required on same day — busy technicians will show a clear conflict toaster.
                 </p>
               </div>
             </div>
@@ -723,31 +801,49 @@ export default function WorkOrderDetail() {
 
           <div className="bg-white rounded-xl border border-zinc-200 p-5">
             <h3 className="font-semibold text-sm tracking-tight">Update Status</h3>
+            {!isAssigned && (
+              <p className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 font-light">
+                Assign a technician first — only Open / Blocked / Cancelled allowed while unassigned.
+              </p>
+            )}
             <div className="mt-4 space-y-3">
               <select
                 value={status}
                 onChange={(e) => setStatus(e.target.value as WorkOrderStatus)}
-                className="w-full h-10 px-3 rounded-lg border border-zinc-200 bg-white text-sm focus:border-zinc-900"
+                className="w-full h-10 px-3 rounded-lg border border-zinc-200 bg-white text-sm focus:border-zinc-900 disabled:opacity-50"
               >
                 <option value="open">Open</option>
-                <option value="scheduled">Scheduled</option>
-                <option value="in_progress">In Progress</option>
+                <option value="scheduled" disabled={!isAssigned}>
+                  Scheduled {!isAssigned ? "(needs technician)" : ""}
+                </option>
+                <option value="in_progress" disabled={!isAssigned}>
+                  In Progress {!isAssigned ? "(needs technician)" : ""}
+                </option>
                 <option value="blocked">Blocked</option>
-                <option value="completed">Completed</option>
+                <option value="completed" disabled={!isAssigned}>
+                  Completed {!isAssigned ? "(needs technician)" : ""}
+                </option>
                 <option value="cancelled">Cancelled</option>
               </select>
               <button
                 type="button"
                 onClick={doStatus}
-                disabled={!canStatus}
+                disabled={!canStatus || (!isAssigned && isStatusRequiresAssignment)}
                 className="w-full h-10 bg-zinc-900 hover:bg-black disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors"
               >
                 Update Status
               </button>
               {!canStatus && (
-                <div className="text-xs text-zinc-500 font-light">
-                  Only assigned technician can submit
-                </div>
+                <div className="text-xs text-zinc-500 font-light">Only assigned technician can submit</div>
+              )}
+              {!isAssigned && isStatusRequiresAssignment && (
+                <div className="text-xs text-amber-700 font-light">Assign a technician before moving to {formatStatus(status)}.</div>
+              )}
+              {wo?.status === "completed" && (
+                <div className="text-xs text-zinc-500 font-light">Completed work orders are final.</div>
+              )}
+              {wo?.status === "cancelled" && (
+                <div className="text-xs text-zinc-500 font-light">Cancelled work orders cannot be resumed.</div>
               )}
             </div>
           </div>
