@@ -1,13 +1,13 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 
 type NavItem = { href: string; label: string; roles?: string[] };
 
 const nav: NavItem[] = [
     { href: "/dashboard", label: "Dashboard" },
-    { href: "/work-orders", label: "Work Orders" },
+    { href: "/work-orders", label: "Work Orders", roles: ["owner", "dispatcher"] },
     {
         href: "/work-orders?assigned=me",
         label: "My Work",
@@ -21,10 +21,12 @@ function getVisibleNav(role?: string) {
     return nav.filter((n) => !n.roles || n.roles.includes(role));
 }
 
-export function Sidebar() {
+function SidebarInner() {
     const pathname = usePathname();
+    const searchParams = useSearchParams();
     const { user } = useAuth();
     const visibleNav = getVisibleNav(user?.role);
+    const assigned = searchParams.get("assigned");
     return (
         <aside className="w-[240px] shrink-0 hidden md:flex flex-col h-screen sticky top-0 bg-white border-r border-zinc-200">
             <div className="px-6 py-7 border-b border-zinc-100 shrink-0">
@@ -58,10 +60,13 @@ export function Sidebar() {
                     Menu
                 </div>
                 {visibleNav.map((n) => {
-                    const active =
-                        pathname === n.href ||
-                        (n.href !== "/dashboard" &&
-                            pathname.startsWith(n.href.split("?")[0]));
+                    const isMyWork = n.href.includes("assigned=me");
+                    const isWorkOrders = n.href === "/work-orders";
+                    let active = false;
+                    if (n.href === "/dashboard") active = pathname === "/dashboard";
+                    else if (isMyWork) active = pathname === "/work-orders" && assigned === "me";
+                    else if (isWorkOrders) active = (pathname === "/work-orders" && assigned !== "me") || pathname.startsWith("/work-orders/");
+                    else active = pathname === n.href || (pathname.startsWith(n.href.split("?")[0]) && n.href !== "/dashboard");
                     return (
                         <Link
                             key={n.href}
@@ -92,5 +97,14 @@ export function Sidebar() {
                 )}
             </div>
         </aside>
+    );
+}
+
+import { Suspense } from "react";
+export function Sidebar() {
+    return (
+        <Suspense fallback={<aside className="w-[240px] shrink-0 hidden md:flex" />}>
+            <SidebarInner />
+        </Suspense>
     );
 }

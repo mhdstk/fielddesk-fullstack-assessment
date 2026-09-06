@@ -11,7 +11,7 @@ export function Toaster() {
     <div
       aria-live="polite"
       aria-atomic="true"
-      className="fixed top-5 right-5 z-[9999] flex flex-col gap-3 w-full max-w-sm sm:max-w-md pointer-events-none px-4 sm:px-0 transition-all duration-300"
+      className="fixed top-5 right-5 z-[9999] flex flex-col gap-3 w-full max-w-sm sm:max-w-md pointer-events-none px-4 sm:px-0"
     >
       {toasts.map((t) => (
         <ToastCard key={t.id} toast={t} onDismiss={() => dismiss(t.id)} />
@@ -21,6 +21,7 @@ export function Toaster() {
 }
 
 function ToastCard({ toast, onDismiss }: { toast: ToastItem; onDismiss: () => void }) {
+  const [leaving, setLeaving] = React.useState(false);
   const isError = toast.type === "error";
   const isSuccess = toast.type === "success";
   const isWarning = toast.type === "warning";
@@ -49,10 +50,23 @@ function ToastCard({ toast, onDismiss }: { toast: ToastItem; onDismiss: () => vo
     ? "bg-amber-500 text-white"
     : "bg-blue-500 text-white";
 
+  const accentBar = isError ? "bg-red-500" : isSuccess ? "bg-emerald-500" : isWarning ? "bg-amber-500" : "bg-blue-500";
+
+  const handleDismiss = () => {
+    setLeaving(true);
+    setTimeout(() => onDismiss(), 300);
+  };
+
+  React.useEffect(() => {
+    if (!toast.duration || toast.duration <= 0) return;
+    const t = setTimeout(() => setLeaving(true), Math.max(0, toast.duration - 300));
+    return () => clearTimeout(t);
+  }, [toast.duration]);
+
   return (
     <div
       role={isError ? "alert" : "status"}
-      className={`pointer-events-auto relative overflow-hidden rounded-2xl border ${borderColor} ${bgColor} p-4 shadow-2xl transition-all duration-200`}
+      className={`pointer-events-auto relative overflow-hidden rounded-2xl border ${borderColor} ${bgColor} p-4 shadow-2xl ${leaving ? "animate-[toast-slide-out_0.3s_ease-in_forwards]" : "animate-[toast-slide-in_0.35s_cubic-bezier(0.16,1,0.3,1)_forwards]"}`}
     >
       <div className="flex items-start gap-3">
         <div
@@ -124,7 +138,7 @@ function ToastCard({ toast, onDismiss }: { toast: ToastItem; onDismiss: () => vo
         </div>
 
         <button
-          onClick={onDismiss}
+          onClick={handleDismiss}
           type="button"
           aria-label="Close notification"
           className="shrink-0 -mr-1 -mt-1 p-1 rounded-lg text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 transition-colors"
@@ -140,6 +154,16 @@ function ToastCard({ toast, onDismiss }: { toast: ToastItem; onDismiss: () => vo
           </svg>
         </button>
       </div>
+      {/* bottom progress + left accent */}
+      <div className={`absolute left-0 top-0 bottom-0 w-1 ${accentBar} opacity-80`} />
+      {toast.duration ? (
+        <div className="absolute bottom-0 left-0 h-0.5 bg-zinc-900/10 w-full overflow-hidden">
+          <div
+            className={`h-full ${accentBar}`}
+            style={{ animation: `toast-progress ${toast.duration}ms linear forwards` }}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

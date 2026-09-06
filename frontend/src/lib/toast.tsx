@@ -21,6 +21,8 @@ type Listener = (toasts: ToastItem[]) => void;
 
 let memoryToasts: ToastItem[] = [];
 const listeners = new Set<Listener>();
+let lastToastKey = "";
+let lastToastAt = 0;
 
 function notifyListeners() {
   listeners.forEach((l) => l([...memoryToasts]));
@@ -51,6 +53,17 @@ function addToast(type: ToastType, messageOrError: unknown, options?: ToastOptio
   }
 
   const duration = options?.duration ?? (type === "error" ? 5500 : 3500);
+  const dedupKey = `${type}:${options?.title || defaultTitle || ""}:${message}`;
+  const now = Date.now();
+  if (dedupKey === lastToastKey && now - lastToastAt < 3500) {
+    return lastToastKey; // dedup identical toast within 3.5s (prevents 4x ws duplicates)
+  }
+  // also dedup if identical message already visible
+  if (memoryToasts.some((t) => t.message === message && t.title === (options?.title || defaultTitle) && t.type === type)) {
+    return id;
+  }
+  lastToastKey = dedupKey;
+  lastToastAt = now;
 
   const toastItem: ToastItem = {
     id,

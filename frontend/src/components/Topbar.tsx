@@ -5,6 +5,8 @@ import { useEffect, useState, useRef } from "react";
 
 export function Topbar({ title, subtitle }: { title: string; subtitle?: string }) {
   const { user, logout } = useAuth();
+  const userRef = useRef(user);
+  useEffect(() => { userRef.current = user; }, [user]);
   const [live, setLive] = useState<"connecting" | "connected" | "disconnected">("connecting");
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -48,17 +50,45 @@ export function Topbar({ title, subtitle }: { title: string; subtitle?: string }
           if (data.type === "work_order_update") {
             const payload = data.data || {};
             window.dispatchEvent(new CustomEvent("work_order_update", { detail: payload }));
-            // Toaster notifications for all real-time work order changes
+            // Slide toaster for every real-time change — assignment is most prominent
             const action = payload.action;
+            const refLabel = payload.ref || (payload.work_order_id ? `#${payload.work_order_id.slice(0, 8)}` : "work order");
             if (action === "assigned") {
-              toast.info(`Technician assigned to work order ${payload.ref || payload.work_order_id || ""}`.trim(), { title: "Assignment" });
+              // OWNERSHIP: only the assigned technician gets a slide toaster; admin/dispatcher already saw Reassigned success,
+              // other technicians are not owners of this work order — no generic assignment toast.
+              const me = Boolean(userRef.current && payload.technician_id && userRef.current.id === payload.technician_id);
+              if (!me) return;
+              // dedup rapid duplicate broadcasts (4x bug) via payload id cache — still needed for technician who may receive same broadcast twice
+              const seenKey = `assigned:${payload.work_order_id}:${payload.technician_id}`;
+              const seen = (window as unknown as { __seenAssign?: Map<string, number> }).__seenAssign;
+              if (!seen) (window as unknown as { __seenAssign?: Map<string, number> }).__seenAssign = new Map();
+              const m = (window as unknown as { __seenAssign: Map<string, number> }).__seenAssign;
+              const last = m.get(seenKey);
+              if (last && Date.now() - last < 6000) return;
+              m.set(seenKey, Date.now());
+
+              toast.success(`You have been assigned to ${refLabel} — check My Work`, { title: "New assignment", duration: 6500 });
             } else if (action === "event") {
+              // suppress duplicate slide for the actor who just changed status (they already saw "Status updated to X" success)
+              const w2 = window as unknown as { __lastStatusAt?: number; __lastStatusWo?: string };
+              if (w2.__lastStatusAt && w2.__lastStatusWo === payload.work_order_id && Date.now() - w2.__lastStatusAt < 8000) {
+                return;
+              }
+              const seenE = (window as unknown as { __seenEvent?: Map<string, number> }).__seenEvent;
+              if (!seenE) (window as unknown as { __seenEvent?: Map<string, number> }).__seenEvent = new Map();
+              const me2 = (window as unknown as { __seenEvent: Map<string, number> }).__seenEvent;
+              const k2 = `event:${payload.work_order_id}:${payload.type}:${payload.event_id || ""}`;
+              const last2 = me2.get(k2);
+              if (last2 && Date.now() - last2 < 6000) return;
+              me2.set(k2, Date.now());
               const label = payload.type === "status_changed" ? "Status updated" : payload.type || "Progress event";
-              toast.info(`${label} for ${payload.work_order_id?.slice(0, 8) || "work order"}`, { title: "Work order updated" });
+              toast.info(`${label} for ${refLabel}`, { title: "Work order updated", duration: 4500 });
             } else if (action === "created") {
-              toast.info(`New work order ${payload.ref || ""} created`, { title: "Work order created" });
+              toast.info(`New work order ${refLabel} created`, { title: "Work order created", duration: 5000 });
             } else if (action === "updated") {
-              toast.info(`Work order ${payload.ref || payload.work_order_id?.slice(0, 8) || ""} updated`, { title: "Work order updated" });
+              const w3 = window as unknown as { __lastStatusAt?: number; __lastStatusWo?: string };
+              if (w3.__lastStatusAt && w3.__lastStatusWo === payload.work_order_id && Date.now() - w3.__lastStatusAt < 8000) return;
+              toast.info(`Work order ${refLabel} updated`, { title: "Work order updated", duration: 4500 });
             }
           }
         } catch {

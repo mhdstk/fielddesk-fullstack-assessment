@@ -372,6 +372,11 @@ export default function WorkOrderDetail() {
         isReassign ? `Reassigned to technician successfully` : "Technician assigned and scheduled successfully",
         { title: isReassign ? "Reassigned" : "Assigned" }
       );
+      // mark recent self-assign so websocket slide toaster for same WO is suppressed (prevents 2nd duplicate)
+      if (typeof window !== "undefined") {
+        (window as unknown as { __lastAssignAt?: number; __lastAssignWo?: string }).__lastAssignAt = Date.now();
+        (window as unknown as { __lastAssignWo?: string }).__lastAssignWo = id;
+      }
       await load();
     } catch (e: unknown) {
       // Surface scheduling conflict with clear actionable message
@@ -411,7 +416,11 @@ export default function WorkOrderDetail() {
           payload: { status },
         }),
       });
-      toast.success(`Status updated to ${formatStatus(status)}`);
+      toast.success(`Status updated to ${formatStatus(status)}`, { title: "Success" });
+      if (typeof window !== "undefined") {
+        (window as unknown as { __lastStatusAt?: number; __lastStatusWo?: string }).__lastStatusAt = Date.now();
+        (window as unknown as { __lastStatusWo?: string }).__lastStatusWo = id;
+      }
       await load();
     } catch (e: unknown) {
       toast.error(e);
