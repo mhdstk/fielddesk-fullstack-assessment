@@ -22,6 +22,20 @@ export interface ApiErrorPayload {
     details?: unknown;
     requestId?: string;
   };
+  code?: string;
+  errorCode?: string;
+  error_code?: string;
+  message?: string;
+  errorMessage?: string;
+  error_message?: string;
+  detail?: string;
+  details?: unknown;
+  errorDetails?: unknown;
+  error_details?: unknown;
+  requestId?: string;
+  request_id?: string;
+  non_field_errors?: unknown;
+  [key: string]: unknown;
 }
 
 export function humanizeErrorMessage(raw: string): string {
@@ -55,19 +69,23 @@ export function extractErrorMessage(
   payload?: ApiErrorPayload | null,
   fallbackMsg: string = "Request failed"
 ): string {
-  if (!payload || !payload.error) return fallbackMsg;
-  const { details, message } = payload.error;
+  if (!payload) return fallbackMsg;
 
-  if (details) {
-    if (typeof details === "string" && details.trim()) {
-      return humanizeErrorMessage(details);
+  // 1. Check nested standard error object
+  const errObj = payload.error || payload;
+  const rawDetails = errObj.details || payload.details || payload.errorDetails || payload.error_details;
+  const rawMessage = errObj.message || payload.message || payload.errorMessage || payload.error_message || payload.detail;
+
+  if (rawDetails) {
+    if (typeof rawDetails === "string" && rawDetails.trim()) {
+      return humanizeErrorMessage(rawDetails);
     }
-    if (Array.isArray(details) && details.length > 0) {
-      return details.map((d) => humanizeErrorMessage(String(d))).join(", ");
+    if (Array.isArray(rawDetails) && rawDetails.length > 0) {
+      return rawDetails.map((d) => humanizeErrorMessage(String(d))).join(", ");
     }
-    if (typeof details === "object" && details !== null) {
+    if (typeof rawDetails === "object" && rawDetails !== null) {
       const msgs: string[] = [];
-      const d = details as Record<string, unknown>;
+      const d = rawDetails as Record<string, unknown>;
 
       if (Array.isArray(d.non_field_errors) && d.non_field_errors.length > 0) {
         msgs.push(...d.non_field_errors.map((x) => humanizeErrorMessage(String(x))));
@@ -97,11 +115,11 @@ export function extractErrorMessage(
     }
   }
 
-  if (message && message.trim() && message !== "Validation failed") {
-    return humanizeErrorMessage(message);
+  if (typeof rawMessage === "string" && rawMessage.trim() && rawMessage !== "Validation failed") {
+    return humanizeErrorMessage(rawMessage);
   }
-  if (message && message.trim()) {
-    return humanizeErrorMessage(message);
+  if (typeof rawMessage === "string" && rawMessage.trim()) {
+    return humanizeErrorMessage(rawMessage);
   }
 
   return fallbackMsg;

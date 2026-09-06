@@ -62,13 +62,9 @@ class WorkOrderListCreateView(generics.ListCreateAPIView):
         if user.role == "technician":
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("Technicians cannot create work orders")
-        # generate ref safely inside transaction
         with transaction.atomic():
-            # org isolation already
             org = user.organisation
             wo = serializer.save(organisation=org, creator=user)
-            # ensure ref uniqueness retry if needed (save already set ref)
-            # if IntegrityError on ref, generate new
             AuditLog.objects.create(
                 organisation=org,
                 actor=user,
@@ -78,14 +74,23 @@ class WorkOrderListCreateView(generics.ListCreateAPIView):
                 after={"title": wo.title, "status": wo.status},
                 request_id=getattr(self.request, "request_id", None),
             )
-            # realtime broadcast
-            try:
-                from channels.layers import get_channel_layer
-                from asgiref.sync import async_to_sync
-                layer = get_channel_layer()
-                async_to_sync(layer.group_send)(f"org_{org.id}", {"type": "work_order_update", "data": {"action": "created", "work_order_id": str(wo.id), "ref": wo.ref}})
-            except Exception:
-                pass
+            org_id_str = str(org.id)
+            wo_id_str = str(wo.id)
+            wo_ref = wo.ref
+
+            def broadcast_create():
+                try:
+                    from channels.layers import get_channel_layer
+                    from asgiref.sync import async_to_sync
+                    layer = get_channel_layer()
+                    async_to_sync(layer.group_send)(
+                        f"org_{org_id_str}",
+                        {"type": "work_order_update", "data": {"action": "created", "work_order_id": wo_id_str, "ref": wo_ref}}
+                    )
+                except Exception:
+                    pass
+
+            transaction.on_commit(broadcast_create)
 
 
 class WorkOrderDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -98,14 +103,9 @@ class WorkOrderDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_object(self):
         obj = super().get_object()
-        # technicians can only view assigned or created? Spec says views assigned work. Allow view if assigned or if not technician
         user = self.request.user
         if user.role == "technician":
-            # allow view if assigned to them or if status check? For now allow any in org but filter list? Keep strict: view only assigned
-            # But to avoid blocking, allow viewing assigned only; others 404
             if obj.technician_id != user.id and obj.creator_id != user.id:
-                # check if there are any work orders assigned to technician - allow viewing only assigned for technicians per spec
-                # Return 404 to avoid leaking existence
                 from rest_framework.exceptions import NotFound
                 raise NotFound("Work order not found")
         return obj
@@ -113,31 +113,29 @@ class WorkOrderDetailView(generics.RetrieveUpdateDestroyAPIView):
     def perform_update(self, serializer):
         user = self.request.user
         if user.role == "technician":
-            # technicians can only submit progress via events, not edit work order directly
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("Technicians cannot edit work orders directly")
         wo = self.get_object()
         before = {"status": wo.status, "technician_id": str(wo.technician_id) if wo.technician_id else None, "title": wo.title}
-        # capture technician change for overlap check
         tech_id = serializer.validated_data.get("technician_id")
         start = serializer.validated_data.get("scheduled_start", wo.scheduled_start)
         end = serializer.validated_data.get("scheduled_end", wo.scheduled_end)
-        # if technician provided, validate org and role
-        if "technician_id" in serializer.validated_data and tech_id is not None:
-            from apps.accounts.models import User
-            try:
-                tech = User.objects.get(id=tech_id, organisation=user.organisation)
-            except User.DoesNotExist:
-                raise serializers.ValidationError({"technician_id": "Technician not found in organisation"})
-            if tech.role != "technician":
-                raise serializers.ValidationError({"technician_id": "Not a technician"})
-        # overlap check if technician assigned and scheduling present
+        
         effective_tech_id = tech_id if "technician_id" in serializer.validated_data else wo.technician_id
         effective_start = start
         effective_end = end
-        if effective_tech_id and effective_start and effective_end:
-            with transaction.atomic():
-                # 1 hour buffer + same-day gap: worker cannot be assigned within 1 hr on same day
+        
+        with transaction.atomic():
+            if effective_tech_id:
+                from apps.accounts.models import User
+                try:
+                    tech = User.objects.select_for_update().get(id=effective_tech_id, organisation=user.organisation)
+                except User.DoesNotExist:
+                    raise serializers.ValidationError({"technician_id": "Technician not found in organisation"})
+                if tech.role != "technician":
+                    raise serializers.ValidationError({"technician_id": "Not a technician"})
+            
+            if effective_tech_id and effective_start and effective_end:
                 buffer = timedelta(hours=1)
                 overlapping = WorkOrder.objects.select_for_update().filter(
                     organisation=user.organisation,
@@ -149,7 +147,6 @@ class WorkOrderDetailView(generics.RetrieveUpdateDestroyAPIView):
                     scheduled_start__lt=effective_end + buffer,
                     scheduled_end__gt=effective_start - buffer,
                 )
-                # also check exact overlap without date restriction (covers multi-day / buffer)
                 if not overlapping.exists():
                     overlapping = WorkOrder.objects.select_for_update().filter(
                         organisation=user.organisation,
@@ -165,11 +162,8 @@ class WorkOrderDetailView(generics.RetrieveUpdateDestroyAPIView):
                     from rest_framework.exceptions import ValidationError as DRFValidationError
                     raise DRFValidationError({"non_field_errors": [f"This worker is already assigned to {conflict.ref} on {conflict.scheduled_start.date()} between {conflict.scheduled_start.strftime('%H:%M')}–{conflict.scheduled_end.strftime('%H:%M')} (1 hr gap required)"]})
 
-        # handle concurrency on overlapping assign as above, then save
-        with transaction.atomic():
             updated = serializer.save()
             after = {"status": updated.status, "technician_id": str(updated.technician_id) if updated.technician_id else None, "title": updated.title}
-            # audit
             if before != after:
                 if before["technician_id"] != after["technician_id"]:
                     AuditLog.objects.create(organisation=user.organisation, actor=user, action="assignment_changed", target_type="work_order", target_id=str(updated.id), before=before, after=after, request_id=getattr(self.request, "request_id", None))
@@ -177,14 +171,24 @@ class WorkOrderDetailView(generics.RetrieveUpdateDestroyAPIView):
                     AuditLog.objects.create(organisation=user.organisation, actor=user, action="status_changed", target_type="work_order", target_id=str(updated.id), before=before, after=after, request_id=getattr(self.request, "request_id", None))
                 else:
                     AuditLog.objects.create(organisation=user.organisation, actor=user, action="work_order_updated", target_type="work_order", target_id=str(updated.id), before=before, after=after, request_id=getattr(self.request, "request_id", None))
-            # realtime
-            try:
-                from channels.layers import get_channel_layer
-                from asgiref.sync import async_to_sync
-                layer = get_channel_layer()
-                async_to_sync(layer.group_send)(f"org_{user.organisation_id}", {"type": "work_order_update", "data": {"action": "updated", "work_order_id": str(updated.id), "ref": updated.ref}})
-            except Exception:
-                pass
+            
+            org_id_str = str(user.organisation_id)
+            up_id_str = str(updated.id)
+            up_ref = updated.ref
+
+            def broadcast_update():
+                try:
+                    from channels.layers import get_channel_layer
+                    from asgiref.sync import async_to_sync
+                    layer = get_channel_layer()
+                    async_to_sync(layer.group_send)(
+                        f"org_{org_id_str}",
+                        {"type": "work_order_update", "data": {"action": "updated", "work_order_id": up_id_str, "ref": up_ref}}
+                    )
+                except Exception:
+                    pass
+
+            transaction.on_commit(broadcast_update)
 
 
 class AssignView(APIView):
@@ -199,26 +203,23 @@ class AssignView(APIView):
         tech_id = ser.validated_data["technician_id"]
         s = ser.validated_data.get("scheduled_start")
         e = ser.validated_data.get("scheduled_end")
-        # if not provided, use existing wo scheduling or now+2h window?
         if s is None:
             s = wo.scheduled_start
         if e is None:
             e = wo.scheduled_end
         if s and e and e <= s:
             return Response({"error": {"code": "validation_error", "message": "Scheduled end time must be after scheduled start time."}}, status=400)
-        # validate technician
+        
         from apps.accounts.models import User
-        try:
-            tech = User.objects.get(id=tech_id, organisation=request.user.organisation, role="technician")
-        except User.DoesNotExist:
-            return Response({"error": {"code": "not_found", "message": "Technician not found"}}, status=404)
-        # concurrency-safe check inside transaction with select_for_update
-        # 1 hour gap on same day: worker cannot be assigned within 1 hr on same day
         buffer = timedelta(hours=1)
         try:
             with transaction.atomic():
-                # lock rows for this technician to serialize
-                # note: select_for_update only works inside transaction
+                # Lock the technician User row to serialize concurrent assignments for this technician
+                try:
+                    tech = User.objects.select_for_update().get(id=tech_id, organisation=request.user.organisation, role="technician")
+                except User.DoesNotExist:
+                    return Response({"error": {"code": "not_found", "message": "Technician not found"}}, status=404)
+
                 if s and e:
                     # same-day 1hr-gap check
                     overlapping = WorkOrder.objects.select_for_update().filter(
@@ -239,6 +240,7 @@ class AssignView(APIView):
                     if overlapping.exists():
                         conflict = overlapping.first()
                         return Response({"error": {"code": "conflict", "message": f"This worker is already assigned to {conflict.ref} on {conflict.scheduled_start.date()} between {conflict.scheduled_start.strftime('%H:%M')}–{conflict.scheduled_end.strftime('%H:%M')} (1 hour gap required on same day)", "details": {"technician_id": str(tech.id), "conflicting_work_order": str(conflict.id), "ref": conflict.ref, "scheduled_start": conflict.scheduled_start.isoformat(), "scheduled_end": conflict.scheduled_end.isoformat()}}}, status=409)
+
                 # update
                 before = {"technician_id": str(wo.technician_id) if wo.technician_id else None, "scheduled_start": str(wo.scheduled_start) if wo.scheduled_start else None}
                 wo.technician = tech
@@ -246,10 +248,10 @@ class AssignView(APIView):
                     wo.scheduled_start = s
                 if e:
                     wo.scheduled_end = e
-                # if status was open/draft, move to scheduled
                 if wo.status in ("open", "draft"):
                     wo.status = "scheduled"
                 wo.save()
+
                 AuditLog.objects.create(
                     organisation=request.user.organisation,
                     actor=request.user,
@@ -260,22 +262,31 @@ class AssignView(APIView):
                     after={"technician_id": str(tech.id), "scheduled_start": str(wo.scheduled_start), "scheduled_end": str(wo.scheduled_end)},
                     request_id=getattr(request, "request_id", None),
                 )
-                # enqueue notification job
-                try:
-                    notify_technician_assignment.delay(str(wo.id), str(tech.id))
-                except Exception:
-                    # if celery not available (e.g. eager or redis down), log but don't fail request
-                    pass
-                # realtime
-                try:
-                    from channels.layers import get_channel_layer
-                    from asgiref.sync import async_to_sync
-                    layer = get_channel_layer()
-                    async_to_sync(layer.group_send)(f"org_{request.user.organisation_id}", {"type": "work_order_update", "data": {"action": "assigned", "work_order_id": str(wo.id), "technician_id": str(tech.id)}})
-                except Exception:
-                    pass
+
+                # Post-commit hooks for async notifications and realtime broadcasts
+                wo_id_str = str(wo.id)
+                tech_id_str = str(tech.id)
+                org_id_str = str(request.user.organisation_id)
+
+                def dispatch_post_commit():
+                    try:
+                        notify_technician_assignment.delay(wo_id_str, tech_id_str)
+                    except Exception:
+                        pass
+                    try:
+                        from channels.layers import get_channel_layer
+                        from asgiref.sync import async_to_sync
+                        layer = get_channel_layer()
+                        async_to_sync(layer.group_send)(
+                            f"org_{org_id_str}",
+                            {"type": "work_order_update", "data": {"action": "assigned", "work_order_id": wo_id_str, "technician_id": tech_id_str}}
+                        )
+                    except Exception:
+                        pass
+
+                transaction.on_commit(dispatch_post_commit)
                 return Response(WorkOrderSerializer(wo).data)
-        except IntegrityError as ex:
+        except IntegrityError:
             return Response({"error": {"code": "conflict", "message": "Concurrent update conflict"}}, status=409)
 
 
